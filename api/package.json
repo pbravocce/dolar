@@ -1,0 +1,14 @@
+{
+  "name": "dolar-ve-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "usdt.js",
+  "scripts": {
+    "start": "func start",
+    "test": "echo \"no tests\""
+  },
+  "dependencies": {
+    "@azure/functions": "^4.6.0"
+  }
+}
