@@ -9,7 +9,7 @@ export function currencySymbol(c: Currency): string {
     case 'VES':
       return 'Bs';
     case 'USD':
-      return 'US$';
+      return 'USD';
     case 'USDT':
       return 'USDT';
     case 'EUR':
@@ -57,6 +57,22 @@ export function formatDate(iso: string): string {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
+    }).format(d);
+  } catch {
+    return iso;
+  }
+}
+
+/** Fecha + hora cortas: "10 ago 15:50". */
+export function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso.slice(0, 16);
+    return new Intl.DateTimeFormat(LOCALE, {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
     }).format(d);
   } catch {
     return iso;

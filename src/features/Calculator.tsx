@@ -11,19 +11,28 @@ import {
 
 const CURRENCIES: Currency[] = ['VES', 'USD', 'USDT', 'EUR'];
 
+type RateKey = 'usd' | 'usdt' | 'eur';
+
+/** Clave de tasa interna a partir de la moneda (VES no tiene: es la base). */
+function keyOf(c: Currency): RateKey {
+  return c === 'USD' ? 'usd' : c === 'USDT' ? 'usdt' : 'eur';
+}
+
 /** Tasa efectiva (override manual si existe, si no la de la API) desde el estado. */
-function eff(s: { overrides: Record<string, number | null>; fetched: Record<string, { rate: number } | null> }, k: string): number {
+function eff(
+  s: { overrides: Record<string, number | null>; fetched: Record<string, { rate: number } | null> },
+  k: string,
+): number {
   const ov = s.overrides[k];
   return ov != null ? ov : (s.fetched[k]?.rate ?? 0);
 }
 
 export function Calculator() {
-  // Suscripciones a valores primitivos: el componente se re-renderiza cuando
-  // cambia la tasa (no cuando cambia la identidad de la acción, como pasaba
-  // antes con el useMemo congelado en effective).
   const usd = useStore((s) => eff(s, 'usd'));
   const usdt = useStore((s) => eff(s, 'usdt'));
   const eur = useStore((s) => eff(s, 'eur'));
+  const overrides = useStore((s) => s.overrides);
+  const setOverride = useStore((s) => s.setOverride);
   const status = useStore((s) => s.status);
 
   const [raw, setRaw] = useState('100');
@@ -38,21 +47,28 @@ export function Calculator() {
   }, [raw]);
 
   const others = CURRENCIES.filter((c) => c !== from);
-
   const ready = rates.usd > 0 && rates.usdt > 0 && rates.eur > 0;
+
+  /** Tasa mostrable debajo de cada botón (Bs por unidad). */
+  const rateFor = (c: Currency): number => {
+    if (c === 'VES') return 1; // base
+    return rates[keyOf(c)];
+  };
+  /** ¿La tasa de esta moneda está fijada a mano? */
+  const isOverridden = (c: Currency): boolean => c !== 'VES' && overrides[keyOf(c)] != null;
 
   return (
     <div className="card">
       <label className="label" htmlFor="amount">
         Monto
       </label>
-      <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-lg font-semibold text-slate-400">
+      <div className="input flex items-center gap-2 px-3">
+        <span className="shrink-0 text-lg font-semibold text-slate-400">
           {currencySymbol(from)}
         </span>
         <input
           id="amount"
-          className="input py-4 pl-14 text-2xl font-semibold tracking-tight"
+          className="w-full bg-transparent py-4 text-2xl font-semibold tracking-tight outline-none"
           inputMode="decimal"
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
@@ -63,48 +79,48 @@ export function Calculator() {
         />
       </div>
 
-      <p className="label mt-4">Convertir desde</p>
-      <div className="grid grid-cols-4 gap-2">
-        {CURRENCIES.map((c) => {
-          const active = c === from;
-          return (
-            <button
-              key={c}
-              onClick={() => setFrom(c)}
-              className={`rounded-xl border py-2.5 text-sm font-medium transition ${
-                active
-                  ? 'border-brand-600 bg-brand-50 text-brand-700 ring-2 ring-brand-100'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {currencySymbol(c)}
-            </button>
-          );
-        })}
-      </div>
+      {!ready && status !== 'loading' && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          No hay tasas todavía. Toca <strong>Refrescar</strong> o ajusta el número
+          debajo de un botón.
+        </p>
+      )}
 
-      <div className="mt-4 space-y-2">
-        {!ready && status !== 'loading' && (
-          <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
-            No hay tasas disponibles todavía. Toca <strong>Refrescar</strong> o
-            ajústalas manualmente más abajo.
-          </p>
-        )}
+      {/* Botones con la tasa debajo (Bs por unidad). Toca el símbolo para
+          elegir la moneda de origen; toca el número para ajustarla a mano. */}
+      <div className="mt-4 grid grid-cols-4 gap-2">
+        {CURRENCIES.map((c) => (
+          <CurrencyButton
+            key={c}
+            currency={c}
+            active={c === from}
+            rate={rateFor(c)}
+            overridden={isOverridden(c)}
+            editable={c !== 'VES'}
+            onSelect={() => setFrom(c)}
+            onSave={(v) => setOverride(keyOf(c), v)}
+            onReset={() => setOverride(keyOf(c), null)}
+          />
+        ))}
+      </div>
+      <p className="mt-1.5 text-center text-[11px] text-slate-400">
+        Tasa en Bs por unidad · toca el número para ajustar
+      </p>
+
+      {/* Equivalente en las otras tres monedas */}
+      <div className="mt-3 space-y-1.5">
         {others.map((c) => {
           const value = ready ? round2(convert(amount, from, c, rates)) : 0;
           return (
-            <ResultRow
+            <div
               key={c}
-              currency={c}
-              value={value}
-              rate={ready ? convert(1, from, c, rates) : 0}
-              dim={!ready}
-              from={from}
-              onPick={() => {
-                setFrom(c);
-                setRaw(Number.isFinite(value) ? formatNumber(value) : '');
-              }}
-            />
+              className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-2.5"
+            >
+              <span className="text-sm font-medium text-slate-500">{currencyName(c)}</span>
+              <span className={`text-lg font-semibold tabular-nums ${ready ? 'text-slate-900' : 'text-slate-300'}`}>
+                {format(value, c)}
+              </span>
+            </div>
           );
         })}
       </div>
@@ -112,37 +128,93 @@ export function Calculator() {
   );
 }
 
-function ResultRow({
+function CurrencyButton({
   currency,
-  value,
+  active,
   rate,
-  dim,
-  from,
-  onPick,
+  overridden,
+  editable,
+  onSelect,
+  onSave,
+  onReset,
 }: {
   currency: Currency;
-  value: number;
+  active: boolean;
   rate: number;
-  dim: boolean;
-  from: Currency;
-  onPick: () => void;
+  overridden: boolean;
+  editable: boolean;
+  onSelect: () => void;
+  onSave: (v: number | null) => void;
+  onReset: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const startEdit = () => {
+    setDraft(rate > 0 ? formatNumber(rate) : '');
+    setEditing(true);
+  };
+
+  const save = () => {
+    const n = parseFloat(draft.replace(',', '.').replace(/\s/g, ''));
+    onSave(Number.isFinite(n) && n > 0 ? round(n) : null);
+    setEditing(false);
+  };
+
   return (
-    <button
-      onClick={onPick}
-      className="flex w-full items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 text-left transition hover:bg-slate-100"
+    <div
+      className={`flex flex-col overflow-hidden rounded-xl border text-center transition ${
+        active
+          ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-100'
+          : 'border-slate-200 bg-white hover:bg-slate-50'
+      }`}
     >
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-          {currencyName(currency)}
-        </p>
-        <p className="text-xs text-slate-400">
-          1 {currencySymbol(from)} = {rate > 0 ? formatNumber(rate, 4) : '—'} {currencySymbol(currency)}
-        </p>
-      </div>
-      <div className={`text-right ${dim ? 'text-slate-300' : 'text-slate-900'}`}>
-        <p className="text-lg font-semibold tabular-nums">{format(value, currency)}</p>
-      </div>
-    </button>
+      <button
+        onClick={onSelect}
+        className="py-2 text-base font-bold text-slate-700"
+        aria-pressed={active}
+      >
+        {currencySymbol(currency)}
+      </button>
+
+      {editing ? (
+        <div className="flex items-center justify-center gap-1 border-t border-slate-200 px-1 py-1">
+          <input
+            className="w-16 rounded-md border border-slate-200 px-1 py-1 text-right text-xs outline-none focus:border-brand-500"
+            inputMode="decimal"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+            onBlur={save}
+            autoFocus
+          />
+        </div>
+      ) : (
+        <button
+          onClick={editable ? startEdit : undefined}
+          disabled={!editable}
+          className="flex items-center justify-center gap-0.5 border-t border-slate-100 px-1 py-1.5 text-xs font-medium tabular-nums text-slate-500 disabled:cursor-default"
+        >
+          {rate > 0 ? formatNumber(rate) : '—'}
+          {overridden && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-brand-500" title="ajustada a mano" />}
+        </button>
+      )}
+
+      {overridden && !editing && (
+        <button
+          onClick={onReset}
+          className="border-t border-slate-100 py-0.5 text-[10px] text-brand-600 hover:underline"
+        >
+          auto
+        </button>
+      )}
+    </div>
   );
+}
+
+function round(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
