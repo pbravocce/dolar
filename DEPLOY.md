@@ -28,7 +28,7 @@ Azure para probar localmente.
    git init
    git add .
    git commit -m "Dólar VE"
-   git remote add origin https://github.com/TU_USUARIO/dolar.git
+   git remote add origin https://github.com/pbravocce/dolar.git
    git branch -M main
    git push -u origin main
    ```
@@ -53,6 +53,8 @@ Azure para probar localmente.
 
 1. En GitHub → pestaña **Actions**: tilde verde ⇒ publicado.
 2. Abrí la URL de Azure en el celular → **Agregar a pantalla de inicio**.
+
+   URL publicada: <https://salmon-glacier-098a4c40f.7.azurestaticapps.net>
 3. La tasa USDT debe aparecer con fuente “Binance P2P (USDT/VES)”. Si muestra
    “—”, confirmá que el **Api location** quedó en `api` (paso 4).
 
